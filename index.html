@@ -1,40 +1,52 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  Search, 
-  Layout, 
-  FileText, 
-  ShieldCheck, 
-  AlertCircle, 
-  Copy, 
-  Download, 
-  Plus, 
-  Trash2, 
-  Send,
-  Eye,
-  Settings,
-  Sparkles,
-  Zap,
-  CheckCircle2,
-  Info
+  Search, Layout, FileText, ShieldCheck, AlertCircle, Copy, Download, 
+  Plus, Trash2, Send, Eye, Settings, Sparkles, Zap, CheckCircle2, 
+  Info, ShieldAlert, FileSearch, Lock, RefreshCw
 } from 'lucide-react';
 
-const DEFAULT_SYSTEM_PROMPT = `Bạn là một chuyên gia SEO Content Strategist cao cấp, chuyên về E-E-A-T và Helpful Content.
-NHIỆM VỤ: Tạo outline bài viết dựa trên từ khóa chính, từ khóa phụ và outline của đối thủ.
+const DEFAULT_SYSTEM_PROMPT = `Bạn là một chuyên gia SEO Content Strategist và Chuyên gia Pháp chế Nội dung cao cấp.
+NHIỆM VỤ: Tạo outline bài viết dựa trên từ khóa và phân tích Content Gap từ đối thủ.
 
-TIÊU CHUẨN TUÂN THỦ (QUAN TRỌNG):
-Căn cứ Công văn 314/BQTG-QL&HTQT (6/5/2026), bạn TUYỆT ĐỐI KHÔNG ĐƯỢC gợi ý, hướng dẫn hoặc đề cập đến:
-- Các phần mềm bẻ khóa (crack), phần mềm lậu, website không bản quyền.
-- Các hành vi sao chép trái phép tác phẩm, bản ghi âm, chương trình phát sóng.
-- Luôn ưu tiên các giải pháp chính thống, phần mềm mã nguồn mở hoặc có bản quyền rõ ràng.
+QUY TẮC TUÂN THỦ NGHIÊM NGẶT (Công văn 314/BQTG-QL&HTQT):
+Kiểm tra và đảm bảo nội dung KHÔNG chứa:
+1. Phần mềm bẻ khóa (crack), lậu, website chia sẻ nội dung không bản quyền.
+2. Hướng dẫn cài đặt/sử dụng phần mềm trái phép.
+3. Vi phạm bản quyền tác phẩm nghệ thuật, ghi âm, phát sóng.
 
-CẤU TRÚC ĐẦU RA (JSON):
-- H1: Chứa từ khóa chính.
-- H2s: Phủ đủ chủ đề chính/phụ/bổ sung theo logic người dùng.
-- H3s: Nằm dưới H2 để làm rõ chuyên sâu.
-- ContentGap: Những heading/thông tin mới mà đối thủ chưa có nhưng cực kỳ hữu ích và chính xác.
-- EEAT_Notes: Gợi ý cách thể hiện trải nghiệm (Experience) và chuyên môn (Expertise).
-- FAQ: Các câu hỏi thường gặp liên quan.
-- ComplianceScore: Xác nhận nội dung sạch, không vi phạm bản quyền.`;
+CẤU TRÚC JSON ĐẦU RA (BẮT BUỘC):
+{
+  "h1": "Tiêu đề",
+  "sections": [{ "h2": "...", "h3s": ["..."], "expertNote": "..." }],
+  "contentGap": [{ "heading": "...", "reason": "..." }],
+  "faq": ["..."],
+  "complianceAudit": {
+    "status": "PASS/WARNING",
+    "details": "Giải thích tuân thủ Công văn 314",
+    "riskLevel": "Low/Safe"
+  }
+}`;
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError(error) { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-10 text-center bg-red-50 rounded-3xl border border-red-100">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-red-800">Đã xảy ra lỗi hiển thị</h2>
+          <p className="text-red-600 mt-2">Dữ liệu từ AI có thể không đúng định dạng. Vui lòng thử lại.</p>
+          <button onClick={() => window.location.reload()} className="mt-4 px-6 py-2 bg-red-600 text-white rounded-xl">Tải lại trang</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const App = () => {
   const [apiKey, setApiKey] = useState('');
@@ -47,20 +59,19 @@ const App = () => {
   const [error, setError] = useState(null);
 
   const generateOutline = async () => {
-    if (!mainKeyword) {
-      setError("Vui lòng nhập từ khóa chính!");
-      return;
-    }
+    if (!mainKeyword) { setError("Vui lòng nhập từ khóa chính!"); return; }
+    if (!apiKey) { setError("Vui lòng nhập Gemini API Key!"); return; }
     
     setIsGenerating(true);
     setError(null);
+    setOutline(null);
 
     const userPrompt = `
       TỪ KHÓA CHÍNH: ${mainKeyword}
       TỪ KHÓA PHỤ: ${secondaryKeywords}
-      OUTLINE ĐỐI THỦ: ${competitorOutlines}
+      DỮ LIỆU ĐỐI THỦ: ${competitorOutlines}
       
-      Hãy tạo outline chuẩn E-E-A-T, tập trung vào Helpful Content. Đảm bảo tuân thủ Công văn 314/BQTG-QL&HTQT về sở hữu trí tuệ.
+      Yêu cầu: Tạo outline chuẩn E-E-A-T, thực hiện Audit theo Công văn 314/BQTG-QL&HTQT.
     `;
 
     try {
@@ -71,323 +82,244 @@ const App = () => {
         body: JSON.stringify({
           contents: [{ parts: [{ text: userPrompt }] }],
           systemInstruction: { parts: [{ text: DEFAULT_SYSTEM_PROMPT }] },
-          generationConfig: {
+          generationConfig: { 
             responseMimeType: "application/json",
-            responseSchema: {
-              type: "OBJECT",
-              properties: {
-                h1: { type: "STRING" },
-                sections: {
-                  type: "ARRAY",
-                  items: {
-                    type: "OBJECT",
-                    properties: {
-                      h2: { type: "STRING" },
-                      h3s: { type: "ARRAY", items: { type: "STRING" } },
-                      expertNote: { type: "STRING" }
-                    }
-                  }
-                },
-                contentGap: {
-                  type: "ARRAY",
-                  items: {
-                    type: "OBJECT",
-                    properties: {
-                      heading: { type: "STRING" },
-                      reason: { type: "STRING" }
-                    }
-                  }
-                },
-                faq: { type: "ARRAY", items: { type: "STRING" } },
-                complianceStatement: { type: "STRING" }
-              }
-            }
+            temperature: 0.7
           }
         })
       });
 
       const data = await response.json();
-      if (data.candidates && data.candidates[0].content.parts[0].text) {
-        setOutline(JSON.parse(data.candidates[0].content.parts[0].text));
+      if (data.error) throw new Error(data.error.message);
+
+      const textResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (textResponse) {
+        const parsed = JSON.parse(textResponse);
+        // Kiểm tra sơ bộ tính hợp lệ của dữ liệu
+        if (!parsed.h1 || !parsed.sections) throw new Error("Dữ liệu AI trả về thiếu cấu trúc bắt buộc.");
+        setOutline(parsed);
       } else {
-        throw new Error("Không thể tạo nội dung. Kiểm tra API Key.");
+        throw new Error("Không nhận được phản hồi từ AI.");
       }
     } catch (err) {
-      setError(err.message || "Đã xảy ra lỗi khi kết nối với AI.");
+      setError("Lỗi: " + err.message);
     } finally {
       setIsGenerating(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100">
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-indigo-600 p-2 rounded-lg">
-              <Sparkles className="text-white w-6 h-6" />
+    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans selection:bg-indigo-100">
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-indigo-600 p-2 rounded-xl">
+              <ShieldCheck className="text-white w-6 h-6" />
             </div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
-              SEO Outline Pro
-            </h1>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">SEO Outline Pro</h1>
           </div>
           <div className="flex items-center gap-4">
-             <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200 text-xs font-medium">
-               <ShieldCheck className="w-4 h-4" />
-               Tuân thủ 314/BQTG-QL&HTQT
-             </div>
-             <input 
-               type="password"
-               placeholder="Gemini API Key..."
-               className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 w-48 focus:ring-2 ring-indigo-500 outline-none transition-all"
-               value={apiKey}
-               onChange={(e) => setApiKey(e.target.value)}
-             />
+            <div className="hidden md:flex items-center gap-2 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+              COMPLIANCE 314 ACTIVE
+            </div>
+            <div className="relative">
+              <Lock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="password" placeholder="Gemini API Key"
+                className="pl-9 pr-4 py-2 bg-slate-100 border-none rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 transition-all w-48"
+                value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+              />
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        {}
-        <div className="lg:col-span-5 space-y-6">
-          <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
-            <div className="flex items-center gap-2 text-indigo-600">
-              <Settings className="w-5 h-5" />
-              <h2 className="font-semibold">Cấu hình SEO</h2>
-            </div>
-            
-            <div className="space-y-4">
+      <main className="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-12 gap-10">
+        {/* Left: Input Panel */}
+        <aside className="lg:col-span-4 space-y-6">
+          <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200">
+            <h2 className="flex items-center gap-2 font-bold text-slate-800 mb-6">
+              <Settings className="w-4 h-4 text-indigo-600" /> Cấu hình nội dung
+            </h2>
+            <div className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Từ khóa chính (Primary)</label>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Từ khóa chính</label>
                 <input 
-                  type="text" 
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
-                  placeholder="Ví dụ: Cách chăm sóc cây cảnh văn phòng"
-                  value={mainKeyword}
-                  onChange={(e) => setMainKeyword(e.target.value)}
+                  type="text" value={mainKeyword} onChange={(e) => setMainKeyword(e.target.value)}
+                  placeholder="Ví dụ: Cách cài Photoshop 2026 chính hãng"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all outline-none text-sm"
                 />
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Từ khóa phụ (LSI / Secondary)</label>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Từ khóa phụ (LSI)</label>
                 <textarea 
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all outline-none h-24 resize-none"
+                  value={secondaryKeywords} onChange={(e) => setSecondaryKeywords(e.target.value)}
                   placeholder="Mỗi từ khóa một dòng..."
-                  value={secondaryKeywords}
-                  onChange={(e) => setSecondaryKeywords(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all outline-none h-24 text-sm"
                 />
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Outline Đối thủ (Dán vào đây)</label>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Dữ liệu đối thủ</label>
                 <textarea 
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all outline-none h-40 resize-none"
-                  placeholder="Copy-paste cấu trúc H của đối thủ để AI phân tích Content Gap..."
-                  value={competitorOutlines}
-                  onChange={(e) => setCompetitorOutlines(e.target.value)}
+                  value={competitorOutlines} onChange={(e) => setCompetitorOutlines(e.target.value)}
+                  placeholder="Dán tiêu đề H2, H3 đối thủ..."
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all outline-none h-32 text-sm font-mono text-[11px]"
                 />
               </div>
+              <button 
+                onClick={generateOutline} disabled={isGenerating}
+                className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 transition-all flex items-center justify-center gap-2"
+              >
+                {isGenerating ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+                {isGenerating ? "Đang xử lý..." : "Xây dựng Outline"}
+              </button>
             </div>
-
-            <button 
-              onClick={generateOutline}
-              disabled={isGenerating || !apiKey}
-              className={`w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-200 ${isGenerating || !apiKey ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 hover:-translate-y-0.5'}`}
-            >
-              {isGenerating ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Đang phân tích E-E-A-T...
-                </>
-              ) : (
-                <>
-                  <Zap className="w-5 h-5 fill-white" />
-                  Tạo Outline Chuẩn
-                </>
-              )}
-            </button>
-            {!apiKey && <p className="text-[10px] text-center text-slate-400">Bạn cần nhập API Key để bắt đầu</p>}
-          </section>
-
-          {}
-          <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex gap-3">
-             <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-             <div className="text-xs text-amber-800 leading-relaxed">
-               <strong>Lưu ý bản quyền:</strong> Hệ thống đã được lập trình để từ chối mọi yêu cầu liên quan đến phần mềm lậu theo Công văn 314/BQTG-QL&HTQT. Việc sử dụng công cụ sạch giúp website của bạn tăng điểm Trust (Tin cậy) trong mắt Google.
-             </div>
           </div>
-        </div>
 
-        {}
-        <div className="lg:col-span-7">
-          {error && (
-            <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-red-600 text-sm mb-6">
-              {error}
-            </div>
-          )}
+          <div className="bg-slate-900 p-6 rounded-[2rem] text-white overflow-hidden relative group">
+            <ShieldAlert className="absolute -right-4 -bottom-4 w-24 h-24 text-white/5 group-hover:scale-110 transition-transform" />
+            <h3 className="text-sm font-bold text-indigo-400 mb-2 flex items-center gap-2">
+              <Info className="w-4 h-4" /> Compliance Note
+            </h3>
+            <p className="text-[11px] leading-relaxed text-slate-400">
+              Công cụ tự động rà soát nội dung dựa trên <strong>Công văn 314/BQTG-QL&HTQT</strong>. Mọi gợi ý phần mềm lậu sẽ được thay thế bằng giải pháp hợp pháp.
+            </p>
+          </div>
+        </aside>
 
-          {!outline && !isGenerating && (
-            <div className="h-[400px] flex flex-col items-center justify-center text-slate-400 bg-white border border-dashed border-slate-300 rounded-3xl">
-              <Layout className="w-12 h-12 mb-4 opacity-20" />
-              <p>Chưa có dữ liệu. Nhập từ khóa và nhấn tạo nhé!</p>
-            </div>
-          )}
-
-          {isGenerating && (
-            <div className="space-y-4 animate-pulse">
-              <div className="h-10 bg-slate-200 rounded-lg w-3/4"></div>
-              <div className="h-64 bg-slate-200 rounded-3xl"></div>
-              <div className="h-32 bg-slate-200 rounded-3xl"></div>
-            </div>
-          )}
-
-          {outline && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="flex items-center justify-between">
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setShowPreview(!showPreview)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${showPreview ? 'bg-indigo-100 text-indigo-700' : 'bg-white border border-slate-200 text-slate-600'}`}
-                  >
-                    <Eye className="w-4 h-4" />
-                    {showPreview ? 'Chế độ Chỉnh sửa' : 'Xem trước (Preview)'}
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                   <button className="p-2 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors">
-                     <Copy className="w-4 h-4" />
-                   </button>
-                   <button className="p-2 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors">
-                     <Download className="w-4 h-4" />
-                   </button>
-                </div>
+        {/* Right: Output Panel */}
+        <section className="lg:col-span-8">
+          <ErrorBoundary>
+            {error && (
+              <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-center gap-3 text-red-600 text-sm mb-6">
+                <AlertCircle className="w-5 h-5" /> {error}
               </div>
+            )}
 
-              {}
-              {!showPreview ? (
-                <div className="space-y-6">
-                  {/* H1 Card */}
-                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-600"></div>
-                    <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block mb-2">Heading 1 (Main Title)</span>
-                    <h3 className="text-2xl font-extrabold text-slate-800">{outline.h1}</h3>
-                  </div>
+            {!outline && !isGenerating && (
+              <div className="h-[500px] bg-white border-2 border-dashed border-slate-200 rounded-[3rem] flex flex-col items-center justify-center text-slate-400">
+                <FileSearch className="w-16 h-16 mb-4 opacity-20" />
+                <p className="font-medium">Chưa có dữ liệu. Hãy nhập từ khóa để bắt đầu.</p>
+              </div>
+            )}
 
-                  {/* Sections Card */}
-                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                    {outline.sections.map((section, idx) => (
-                      <div key={idx} className="group border-l-2 border-slate-100 pl-6 py-2 hover:border-indigo-200 transition-all">
-                        <div className="flex items-start justify-between">
-                           <div className="space-y-2">
-                              <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                <span className="text-indigo-400">H2.</span> {section.h2}
-                              </h4>
-                              <div className="space-y-1.5 ml-4">
-                                {section.h3s.map((h3, hIdx) => (
-                                  <p key={hIdx} className="text-slate-600 flex items-center gap-2 text-sm">
-                                    <span className="w-1.5 h-1.5 bg-slate-300 rounded-full"></span>
-                                    <span className="font-medium text-indigo-500/70 shrink-0">H3.</span> {h3}
-                                  </p>
-                                ))}
-                              </div>
-                           </div>
-                           <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button className="p-1.5 text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
-                           </div>
-                        </div>
-                        {section.expertNote && (
-                          <div className="mt-4 flex gap-2 bg-indigo-50/50 p-3 rounded-xl">
-                            <Info className="w-4 h-4 text-indigo-400 shrink-0" />
-                            <p className="text-xs text-indigo-700 italic">{section.expertNote}</p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    <button className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-sm hover:border-indigo-300 hover:text-indigo-500 transition-all flex items-center justify-center gap-2">
-                      <Plus className="w-4 h-4" /> Thêm tiêu đề mới
-                    </button>
-                  </div>
+            {isGenerating && (
+              <div className="space-y-6 animate-pulse">
+                <div className="h-16 bg-white rounded-2xl w-2/3" />
+                <div className="h-96 bg-white rounded-[3rem]" />
+              </div>
+            )}
 
-                  {/* Content Gap & FAQ */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100">
-                       <h5 className="font-bold text-emerald-800 flex items-center gap-2 mb-4 uppercase text-xs tracking-wider">
-                         <Sparkles className="w-4 h-4" /> Content Gap (Lợi thế cạnh tranh)
-                       </h5>
-                       <ul className="space-y-3">
-                         {outline.contentGap.map((gap, i) => (
-                           <li key={i} className="text-sm">
-                             <div className="font-bold text-emerald-700">{gap.heading}</div>
-                             <div className="text-emerald-600 text-xs mt-0.5">{gap.reason}</div>
-                           </li>
-                         ))}
-                       </ul>
-                    </div>
-
-                    <div className="bg-slate-800 p-6 rounded-2xl text-white">
-                       <h5 className="font-bold text-indigo-300 flex items-center gap-2 mb-4 uppercase text-xs tracking-wider">
-                         <Zap className="w-4 h-4" /> Frequently Asked Questions
-                       </h5>
-                       <ul className="space-y-2">
-                         {outline.faq.map((q, i) => (
-                           <li key={i} className="text-sm flex gap-2">
-                             <span className="text-indigo-400 font-bold">Q.</span>
-                             <span className="opacity-80">{q}</span>
-                           </li>
-                         ))}
-                       </ul>
+            {outline && (
+              <div className="space-y-6">
+                {/* Audit Report */}
+                <div className={`p-4 rounded-2xl border flex items-center justify-between ${outline?.complianceAudit?.status === 'PASS' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-amber-50 border-amber-100 text-amber-800'}`}>
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className={`w-5 h-5 ${outline?.complianceAudit?.status === 'PASS' ? 'text-emerald-500' : 'text-amber-500'}`} />
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Kết quả Audit 314</p>
+                      <p className="text-xs font-bold">{outline?.complianceAudit?.details || "Đã kiểm định an toàn."}</p>
                     </div>
                   </div>
+                  <span className="text-[10px] font-black px-2 py-1 bg-white/50 rounded border border-black/5 uppercase">
+                    Risk: {outline?.complianceAudit?.riskLevel || "Low"}
+                  </span>
+                </div>
 
-                  <div className="flex items-center gap-2 text-[10px] text-slate-400 justify-center py-4 italic">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                    {outline.complianceStatement}
+                <div className="flex justify-between items-center">
+                  <div className="flex bg-white p-1 rounded-xl border border-slate-200">
+                    <button 
+                      onClick={() => setShowPreview(false)}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${!showPreview ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                    >Cấu trúc Outline</button>
+                    <button 
+                      onClick={() => setShowPreview(true)}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${showPreview ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                    >Xem Preview</button>
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="p-2.5 bg-white border border-slate-200 rounded-xl hover:text-indigo-600 transition-colors shadow-sm"><Copy className="w-4 h-4" /></button>
+                    <button className="p-2.5 bg-white border border-slate-200 rounded-xl hover:text-indigo-600 transition-colors shadow-sm"><Download className="w-4 h-4" /></button>
                   </div>
                 </div>
-              ) : (
-                <div className="bg-white p-10 rounded-3xl border border-slate-200 shadow-xl prose max-w-none prose-indigo">
-                  <h1 className="text-4xl font-black text-slate-900 border-b pb-6 mb-8">{outline.h1}</h1>
-                  
-                  {outline.sections.map((section, idx) => (
-                    <div key={idx} className="mb-10">
-                      <h2 className="text-2xl font-bold text-slate-800 mb-4">{section.h2}</h2>
-                      <div className="bg-slate-50 border-l-4 border-indigo-200 p-4 mb-6 rounded-r-xl">
-                        <p className="text-slate-500 text-sm italic m-0">[Phần này: {section.expertNote || 'Đang chờ nội dung chi tiết...'}]</p>
+
+                {/* Content View */}
+                <div className="bg-white rounded-[3rem] border border-slate-200 p-10 shadow-sm">
+                  {showPreview ? (
+                    <div className="prose prose-slate max-w-none">
+                      <h1 className="text-4xl font-black mb-8">{outline?.h1}</h1>
+                      {outline?.sections?.map((s, i) => (
+                        <div key={i} className="mb-10">
+                          <h2 className="text-2xl font-bold border-l-4 border-indigo-500 pl-4 mb-4">{s.h2}</h2>
+                          <div className="space-y-4 ml-6">
+                            {s.h3s?.map((h, j) => <h3 key={j} className="text-lg font-semibold text-slate-700">{h}</h3>)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-10">
+                      <div className="group">
+                        <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 block">Heading 1</span>
+                        <h2 className="text-3xl font-black text-slate-900 group-hover:text-indigo-600 transition-colors">{outline?.h1}</h2>
                       </div>
-                      <div className="space-y-6 ml-6">
-                        {section.h3s.map((h3, hIdx) => (
-                          <div key={hIdx}>
-                            <h3 className="text-xl font-semibold text-slate-700">{h3}</h3>
-                            <p className="text-slate-400 text-sm mt-2">Lorem ipsum dolor sit amet, consectetur adipiscing elit...</p>
+                      <div className="space-y-8">
+                        {outline?.sections?.map((s, i) => (
+                          <div key={i} className="relative pl-8 border-l-2 border-slate-100 hover:border-indigo-200 transition-all">
+                            <div className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-white border-2 border-indigo-600" />
+                            <h3 className="text-xl font-bold text-slate-800 mb-4">{s.h2}</h3>
+                            <div className="space-y-3 mb-4 ml-4">
+                              {s.h3s?.map((h, j) => (
+                                <div key={j} className="flex items-center gap-3 text-slate-600 text-sm">
+                                  <div className="w-1 h-1 bg-slate-300 rounded-full" /> {h}
+                                </div>
+                              ))}
+                            </div>
+                            {s.expertNote && (
+                              <div className="bg-indigo-50/50 p-4 rounded-2xl text-xs text-indigo-700 italic flex gap-3">
+                                <Info className="w-4 h-4 shrink-0" /> {s.expertNote}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
                     </div>
-                  ))}
+                  )}
+                </div>
 
-                  <div className="mt-12 pt-8 border-t border-slate-100">
-                    <h2 className="text-2xl font-bold text-slate-800 mb-6">Câu hỏi thường gặp</h2>
-                    <div className="space-y-4">
-                       {outline.faq.map((q, i) => (
-                         <details key={i} className="group border border-slate-100 rounded-xl p-4 cursor-pointer">
-                           <summary className="font-medium text-slate-700 list-none flex justify-between items-center">
-                             {q}
-                             <Plus className="w-4 h-4 group-open:rotate-45 transition-transform" />
-                           </summary>
-                         </details>
-                       ))}
+                {/* Insights Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100">
+                    <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-4">Content Gap (New)</h4>
+                    <div className="space-y-3">
+                      {outline?.contentGap?.map((g, i) => (
+                        <div key={i} className="bg-white/60 p-3 rounded-xl border border-emerald-200/50">
+                          <p className="text-xs font-bold text-emerald-900">{g.heading}</p>
+                          <p className="text-[10px] text-emerald-700 mt-1">{g.reason}</p>
+                        </div>
+                      ))}
                     </div>
                   </div>
+                  <div className="bg-slate-900 p-6 rounded-[2rem] text-white">
+                    <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Helpful FAQs</h4>
+                    <ul className="space-y-3">
+                      {outline?.faq?.map((f, i) => (
+                        <li key={i} className="text-xs text-slate-300 flex gap-2">
+                          <span className="text-indigo-500 font-bold">Q.</span> {f}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+          </ErrorBoundary>
+        </section>
       </main>
 
-      <footer className="max-w-7xl mx-auto px-4 py-12 border-t border-slate-200 mt-12 text-center text-slate-400 text-xs">
-        <p>© 2026 SEO Outline Pro - Bản quyền thuộc về doanh nghiệp tuân thủ Nghị định 314/BQTG-QL&HTQT</p>
+      <footer className="max-w-7xl mx-auto px-6 py-12 border-t border-slate-200 mt-20 text-center">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em]">SEO Outline Pro • Compliant with Directive 314/BQTG-QL&HTQT</p>
       </footer>
     </div>
   );
